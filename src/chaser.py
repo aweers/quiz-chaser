@@ -9,10 +9,18 @@ import argparse
 import glob
 import subprocess
 
+SRC_WIDTH = 960
+def c_w(w):
+    return int(w * SRC_WIDTH / 1920)
+
+SRC_HEIGHT = 540
+def c_h(h):
+    return int(h * SRC_HEIGHT / 1080)
+
 def sample_frames(url, output):
     # ffmpeg.input(url, r=1).filter('fps', fps='1/30').crop(1405, 240, 258, 798).output(os.path.join(output, "frame_%04d.png")).run(quiet=True)
     os.makedirs(output, exist_ok=True)
-    subprocess.run(["ffmpeg", "-i", url, "-vf", "fps=1,crop=1405:240:258:798", os.path.join(os.path.dirname(__file__), output, "frame_%04d.png")])
+    subprocess.run(["ffmpeg", "-i", url, "-map", "p:0:v", "-vf", f"fps=1,crop={c_w(1405)}:{c_h(240)}:{c_w(258)}:{c_h(798)}", os.path.join(os.path.dirname(__file__), output, "frame_%04d.png")])
 
 
 def bgr2hsl(bgr):
@@ -40,9 +48,9 @@ def bgr2hsl(bgr):
     return h.item(), s.item(), l.item()
 
 def green_answer(image):
-    correct_a = bgr2hsl(np.mean(image[210:215, 45:65], axis=(0,1)))
-    correct_b = bgr2hsl(np.mean(image[210:215, 495:515], axis=(0,1)))
-    correct_c = bgr2hsl(np.mean(image[210:215, 945:965], axis=(0,1)))
+    correct_a = bgr2hsl(np.mean(image[c_h(210):c_h(215), c_w(45):c_w(65)], axis=(0,1)))
+    correct_b = bgr2hsl(np.mean(image[c_h(210):c_h(215), c_w(495):c_w(515)], axis=(0,1)))
+    correct_c = bgr2hsl(np.mean(image[c_h(210):c_h(215), c_w(945):c_w(965)], axis=(0,1)))
 
     def is_green(clr):
         return clr[0] > 128 and clr[0] < 138 and clr[1] > 0.2 and clr[1] < 0.32 and clr[2] > 0.56 and clr[2] < 0.69
@@ -71,15 +79,15 @@ def process_frames(location):
         sobel_h = cv2.Sobel(img_blur, dx=0, dy=1, ksize=5, ddepth=cv2.CV_64F)
         sobel_v = cv2.Sobel(img_blur, dx=1, dy=0, ksize=5, ddepth=cv2.CV_64F)
 
-        horizontal_lines = np.mean(sobel_h[0:22, :]) + np.mean(sobel_h[144:160]) + np.mean(sobel_h[220:226])
-        vertical_lines = np.mean(np.abs(sobel_v[:, :23])) + np.mean(np.abs(sobel_v[156:210, 468:480])) + np.mean(np.abs(sobel_v[156:210, 920:930])) + np.mean(np.abs(sobel_v[:, 1389:]))
+        horizontal_lines = np.mean(sobel_h[c_h(0):c_h(22), :]) + np.mean(sobel_h[c_h(144):c_h(160)]) + np.mean(sobel_h[c_h(220):c_h(226)])
+        vertical_lines = np.mean(np.abs(sobel_v[:, :c_w(23)])) + np.mean(np.abs(sobel_v[c_h(156):c_h(210), c_w(468):c_w(480)])) + np.mean(np.abs(sobel_v[c_h(156):c_h(210), c_w(920):c_w(930)])) + np.mean(np.abs(sobel_v[:, c_w(1389):]))
         if horizontal_lines > 1000 and vertical_lines > 1000: # question with answers
             ans = green_answer(img)
             if ans > -1:
-                question = pytesseract.image_to_string(img_gray[20:143, 25:1384], lang='deu')
-                ans1 = pytesseract.image_to_string(img_gray[156:217, 18:471], lang='deu')
-                ans2 = pytesseract.image_to_string(img_gray[156:217, 486:920], lang='deu')
-                ans3 = pytesseract.image_to_string(img_gray[156:217, 937:1384], lang='deu')
+                question = pytesseract.image_to_string(img_gray[c_h(20):c_h(143), c_w(25):c_w(1384)], lang='deu')
+                ans1 = pytesseract.image_to_string(img_gray[c_h(156):c_h(217), c_w(18):c_w(471)], lang='deu')
+                ans2 = pytesseract.image_to_string(img_gray[c_h(156):c_h(217), c_w(486):c_w(920)], lang='deu')
+                ans3 = pytesseract.image_to_string(img_gray[c_h(156):c_h(217), c_w(937):c_w(1384)], lang='deu')
 
                 result.append((im_i, question, ans1, ans2, ans3, ans))
     return result
