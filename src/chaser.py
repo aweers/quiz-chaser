@@ -8,6 +8,8 @@ from enum import Enum
 import argparse
 import glob
 import subprocess
+from urllib.request import urlopen
+import ssl; ssl._create_default_https_context = ssl._create_stdlib_context
 
 SRC_WIDTH = 960
 def c_w(w):
@@ -71,10 +73,25 @@ def process_stream(url, stream_index=0):
         if horizontal_lines > 1000 and vertical_lines > 1000: # question with answers
             ans = green_answer(img)
             if ans > -1:
-                question = pytesseract.image_to_string(img_gray[c_h(20):c_h(143), c_w(25):c_w(1384)], lang='deu')
-                ans1 = pytesseract.image_to_string(img_gray[c_h(156):c_h(217), c_w(18):c_w(471)], lang='deu')
-                ans2 = pytesseract.image_to_string(img_gray[c_h(156):c_h(217), c_w(486):c_w(920)], lang='deu')
-                ans3 = pytesseract.image_to_string(img_gray[c_h(156):c_h(217), c_w(937):c_w(1384)], lang='deu')
+                # _, tess_img = cv2.threshold(img, 127, 255, cv2.THRESH_BINARY)
+                # tess_img = cv2.cvtColor(tess_img, cv2.COLOR_BGR2GRAY)
+                mask_wrong = ((np.min(img, axis=-1) < 160) * 255).astype(np.uint8)
+                mask_correct = ((np.max(img, axis=-1) > 60) * 255).astype(np.uint8)
+                question = pytesseract.image_to_string(mask_wrong[c_h(20):c_h(143), c_w(25):c_w(1384)], lang='deu')
+                if mask_correct[c_h(156):c_h(217), c_w(18):c_w(471)].sum() < mask_wrong[c_h(156):c_h(217), c_w(18):c_w(471)].sum():
+                    ans1 = pytesseract.image_to_string(mask_correct[c_h(156):c_h(217), c_w(18):c_w(471)], lang='deu')
+                else:
+                    ans1 = pytesseract.image_to_string(mask_wrong[c_h(156):c_h(217), c_w(18):c_w(471)], lang='deu')
+
+                if mask_correct[c_h(156):c_h(217), c_w(486):c_w(920)].sum() < mask_wrong[c_h(156):c_h(217), c_w(468):c_w(920)].sum():
+                    ans2 = pytesseract.image_to_string(mask_correct[c_h(156):c_h(217), c_w(486):c_w(920)], lang='deu')
+                else:
+                    ans2 = pytesseract.image_to_string(mask_wrong[c_h(156):c_h(217), c_w(486):c_w(920)], lang='deu')
+
+                if mask_correct[c_h(156):c_h(217), c_w(937):c_w(1384)].sum() < mask_wrong[c_h(156):c_h(217), c_w(937):c_w(1384)].sum():
+                    ans3 = pytesseract.image_to_string(mask_correct[c_h(156):c_h(217), c_w(937):c_w(1384)], lang='deu')
+                else:
+                    ans3 = pytesseract.image_to_string(mask_wrong[c_h(156):c_h(217), c_w(937):c_w(1384)], lang='deu')
 
                 result.append((count, question, ans1, ans2, ans3, ans))
         else:
@@ -126,6 +143,7 @@ def green_answer(image):
 
 
 def to_file(results, file_name):
+    correct_answers = ['a', 'b', 'c']
     with open(file_name, "a") as f:
         for r in results:
             f.write("$$$$" + "\n")
@@ -146,7 +164,7 @@ def to_file(results, file_name):
             f.write(r[4] + "\n")
 
             f.write("$$$" + "\n")
-            f.write(f"Correct answer: {r[5]}\n")
+            f.write(f"Correct answer: {correct_answers[r[5]]}\n\n")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -154,9 +172,19 @@ if __name__ == "__main__":
     parser.add_argument('output')
     args = parser.parse_args()
 
-    streams = probe_stream(args.video)
-    high_q_stream = select_stream(streams, 'low')
+    if args.video.startswith('http'):
+        page = urlopen(args.video)
+        html_bytes = page.read()
+        html = html_bytes.decode("utf-8")
+        pos = html.index('m3u8')
+        start_pos = html.rfind("\"", 0, pos)
+        video_url = html[start_pos+1:pos+4]
+    else:
+        video_url = args.video
+
+    streams = probe_stream(video_url)
+    high_q_stream = select_stream(streams, 'high')
     SRC_HEIGHT = high_q_stream['height']
     SRC_WIDTH = high_q_stream['width']
-    res = process_stream(args.video, high_q_stream['index'])
+    res = process_stream(video_url, high_q_stream['index'])
     to_file(res, args.output)
