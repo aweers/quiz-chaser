@@ -84,26 +84,6 @@ def process_stream(url, stream_index=0):
 
     return result
 
-def sample_frames(url, output, stream_index=0, frame_ixs=None):
-    # ffmpeg.input(url, r=1).filter('fps', fps='1/30').crop(1405, 240, 258, 798).output(os.path.join(output, "frame_%04d.png")).run(quiet=True)
-    os.makedirs(output, exist_ok=True)
-    if frame_ixs is None:
-        subprocess.run(["ffmpeg", "-i", url, "-map", f"0:{stream_index}", "-vf", f"fps=1,crop={c_w(1405)}:{c_h(240)}:{c_w(258)}:{c_h(798)}", os.path.join(os.path.dirname(__file__), output, "frame_%04d.png")])
-    else:
-        proc = ffmpeg.input(url).filter('fps', fps='1').output('pipe:', format='rawvideo', pix_fmt='rgb24', s='{}x{}'.format(SRC_WIDTH, SRC_HEIGHT)).run_async(pipe_stdout=True)
-        count =0
-        while True:
-            in_bytes = proc.stdout.read(SRC_HEIGHT * SRC_WIDTH * 3)
-            if not in_bytes:
-                break
-            if count in frame_ixs:
-                in_frame = (
-                    np
-                    .frombuffer(in_bytes, np.uint8)
-                    .reshape([SRC_HEIGHT, SRC_WIDTH, 3])
-                )
-            count +=1
-
 def bgr2hsl(bgr):
     bgr /= 255.0
     dominant_color = np.argmax(bgr)
@@ -145,120 +125,38 @@ def green_answer(image):
     return -1
 
 
-def process_frames(location):
-    c_files = len(glob.glob(os.path.join(location, "frame_*.png")))
-    result = []
-    for im_i in range(1, c_files + 1):
-        temp_file = os.path.join(os.path.dirname(__file__), location, "frame_" + str(int(im_i )).zfill(4) + ".png")
-        img = cv2.imread(temp_file)
-        if img is None:
-            print(f"Error reading {im_i}")
-            continue
-        img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-        img_blur = cv2.GaussianBlur(img_gray, (3, 3), sigmaX=0, sigmaY=0)
-        sobel_h = cv2.Sobel(img_blur, dx=0, dy=1, ksize=5, ddepth=cv2.CV_64F)
-        sobel_v = cv2.Sobel(img_blur, dx=1, dy=0, ksize=5, ddepth=cv2.CV_64F)
-
-        horizontal_lines = np.mean(sobel_h[c_h(0):c_h(22), :]) + np.mean(sobel_h[c_h(144):c_h(160)]) + np.mean(sobel_h[c_h(220):c_h(226)])
-        vertical_lines = np.mean(np.abs(sobel_v[:, :c_w(23)])) + np.mean(np.abs(sobel_v[c_h(156):c_h(210), c_w(468):c_w(480)])) + np.mean(np.abs(sobel_v[c_h(156):c_h(210), c_w(920):c_w(930)])) + np.mean(np.abs(sobel_v[:, c_w(1389):]))
-        if horizontal_lines > 1000 and vertical_lines > 1000: # question with answers
-            ans = green_answer(img)
-            if ans > -1:
-                question = pytesseract.image_to_string(img_gray[c_h(20):c_h(143), c_w(25):c_w(1384)], lang='deu')
-                ans1 = pytesseract.image_to_string(img_gray[c_h(156):c_h(217), c_w(18):c_w(471)], lang='deu')
-                ans2 = pytesseract.image_to_string(img_gray[c_h(156):c_h(217), c_w(486):c_w(920)], lang='deu')
-                ans3 = pytesseract.image_to_string(img_gray[c_h(156):c_h(217), c_w(937):c_w(1384)], lang='deu')
-
-                result.append((im_i, question, ans1, ans2, ans3, ans))
-    return result
-
-def find_answer_frames(location):
-    c_files = len(glob.glob(os.path.join(location, "frame_*.png")))
-    print(c_files)
-    result = []
-    for im_i in range(1, c_files + 1):
-        temp_file = os.path.join(os.path.dirname(__file__), location, "frame_" + str(int(im_i )).zfill(4) + ".png")
-        img = cv2.imread(temp_file)
-        if img is None:
-            print(f"Error reading {im_i}")
-            continue
-        img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-        img_blur = cv2.GaussianBlur(img_gray, (3, 3), sigmaX=0, sigmaY=0)
-        sobel_h = cv2.Sobel(img_blur, dx=0, dy=1, ksize=5, ddepth=cv2.CV_64F)
-        sobel_v = cv2.Sobel(img_blur, dx=1, dy=0, ksize=5, ddepth=cv2.CV_64F)
-
-        horizontal_lines = np.mean(sobel_h[c_h(0):c_h(22), :]) + np.mean(sobel_h[c_h(144):c_h(160)]) + np.mean(sobel_h[c_h(220):c_h(226)])
-        vertical_lines = np.mean(np.abs(sobel_v[:, :c_w(23)])) + np.mean(np.abs(sobel_v[c_h(156):c_h(210), c_w(468):c_w(480)])) + np.mean(np.abs(sobel_v[c_h(156):c_h(210), c_w(920):c_w(930)])) + np.mean(np.abs(sobel_v[:, c_w(1389):]))
-        if horizontal_lines > 1000 and vertical_lines > 1000: # question with answers
-            ans = green_answer(img)
-            if ans > -1:
-                result.append(im_i)
-    return result
-
-def to_file(results, file_name, src_name):
+def to_file(results, file_name):
     with open(file_name, "a") as f:
         for r in results:
-            f.write("=" * 20 + "\n")
+            f.write("$$$$" + "\n")
 
-            f.write(src_name + " at " + str(r[0]) + "\n")
             f.write("Question\n")
             f.write(r[1] + "\n")
 
-            f.write("=" * 10 + "\n")
+            f.write("$$$" + "\n")
             f.write("Answer A\n")
             f.write(r[2] + "\n")
 
-            f.write("=" * 10 + "\n")
+            f.write("$$$" + "\n")
             f.write("Answer B\n")
             f.write(r[3] + "\n")
 
-            f.write("=" * 10 + "\n")
+            f.write("$$$" + "\n")
             f.write("Answer C\n")
             f.write(r[4] + "\n")
 
-            f.write("=" * 10 + "\n")
+            f.write("$$$" + "\n")
             f.write(f"Correct answer: {r[5]}\n")
-
-            f.write("=" * 20 + "\n")
-
-def clean_up(location):
-    files = glob.glob(os.path.join(location, "frame_*.png"))
-    for f in files:
-        os.remove(f)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('video')
+    parser.add_argument('output')
     args = parser.parse_args()
-
 
     streams = probe_stream(args.video)
     high_q_stream = select_stream(streams, 'low')
     SRC_HEIGHT = high_q_stream['height']
     SRC_WIDTH = high_q_stream['width']
     res = process_stream(args.video, high_q_stream['index'])
-    to_file(res, "questions2.txt", args.video)
-    exit()
-
-    streams = probe_stream(args.video)
-    low_q_stream = select_stream(streams, 'low')
-    SRC_HEIGHT = low_q_stream['height']
-    SRC_WIDTH = low_q_stream['width']
-    print(f"Set width={SRC_WIDTH} and height={SRC_HEIGHT}")
-
-    tmp_dir = "out"
-    quality_dir = "out2"
-    # sample_frames(args.video, tmp_dir, low_q_stream['index'])
-    answer_timestamps = find_answer_frames(tmp_dir)
-    high_q_stream = select_stream(streams, 'low')
-    SRC_HEIGHT = high_q_stream['height']
-    SRC_WIDTH = high_q_stream['width']
-    sample_frames(args.video, quality_dir, high_q_stream['index'], answer_timestamps)
-
-
-    exit()
-    res = process_frames(tmp_dir)
-    to_file(res, "questions.txt", "vid1")
-    clean_up(tmp_dir)
+    to_file(res, args.output)
