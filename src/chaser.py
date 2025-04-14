@@ -77,21 +77,30 @@ def process_stream(url, stream_index=0):
                 # tess_img = cv2.cvtColor(tess_img, cv2.COLOR_BGR2GRAY)
                 mask_wrong = ((np.min(img, axis=-1) < 160) * 255).astype(np.uint8)
                 mask_correct = ((np.max(img, axis=-1) > 60) * 255).astype(np.uint8)
-                question = pytesseract.image_to_string(mask_wrong[c_h(20):c_h(143), c_w(25):c_w(1384)], lang='deu')
-                if mask_correct[c_h(156):c_h(217), c_w(18):c_w(471)].sum() < mask_wrong[c_h(156):c_h(217), c_w(18):c_w(471)].sum():
-                    ans1 = pytesseract.image_to_string(mask_correct[c_h(156):c_h(217), c_w(18):c_w(471)], lang='deu')
-                else:
-                    ans1 = pytesseract.image_to_string(mask_wrong[c_h(156):c_h(217), c_w(18):c_w(471)], lang='deu')
+                question = str(count) + "  " + pytesseract.image_to_string(mask_wrong[c_h(20):c_h(143), c_w(25):c_w(1384)], lang='deu')
+                cv2.imwrite(f"slices/{count}.png", img)
 
-                if mask_correct[c_h(156):c_h(217), c_w(486):c_w(920)].sum() < mask_wrong[c_h(156):c_h(217), c_w(468):c_w(920)].sum():
-                    ans2 = pytesseract.image_to_string(mask_correct[c_h(156):c_h(217), c_w(486):c_w(920)], lang='deu')
-                else:
-                    ans2 = pytesseract.image_to_string(mask_wrong[c_h(156):c_h(217), c_w(486):c_w(920)], lang='deu')
+                ans_sliceh = slice(c_h(156), c_h(217))
+                ans1_slicew = slice(c_w(18), c_w(471))
+                ans2_slicew = slice(c_w(486), c_w(920))
+                ans3_slicew = slice(c_w(937), c_w(1384))
 
-                if mask_correct[c_h(156):c_h(217), c_w(937):c_w(1384)].sum() < mask_wrong[c_h(156):c_h(217), c_w(937):c_w(1384)].sum():
-                    ans3 = pytesseract.image_to_string(mask_correct[c_h(156):c_h(217), c_w(937):c_w(1384)], lang='deu')
+                ans_config = '--psm 7'
+
+                if mask_correct[ans_sliceh, ans1_slicew].sum() < mask_wrong[ans_sliceh, ans1_slicew].sum():
+                    ans1 = pytesseract.image_to_string(mask_correct[ans_sliceh, ans1_slicew], lang='deu', config=ans_config)
                 else:
-                    ans3 = pytesseract.image_to_string(mask_wrong[c_h(156):c_h(217), c_w(937):c_w(1384)], lang='deu')
+                    ans1 = pytesseract.image_to_string(mask_wrong[ans_sliceh, ans1_slicew], lang='deu', config=ans_config)
+
+                if mask_correct[ans_sliceh, ans2_slicew].sum() < mask_wrong[ans_sliceh, ans2_slicew].sum():
+                    ans2 = pytesseract.image_to_string(mask_correct[ans_sliceh, ans2_slicew], lang='deu', config=ans_config)
+                else:
+                    ans2 = pytesseract.image_to_string(mask_wrong[ans_sliceh, ans2_slicew], lang='deu', config=ans_config)
+
+                if mask_correct[ans_sliceh, ans3_slicew].sum() < mask_wrong[ans_sliceh, ans3_slicew].sum():
+                    ans3 = pytesseract.image_to_string(mask_correct[ans_sliceh, ans3_slicew], lang='deu', config=ans_config)
+                else:
+                    ans3 = pytesseract.image_to_string(mask_wrong[ans_sliceh, ans3_slicew], lang='deu', config=ans_config)
 
                 result.append((count, question, ans1, ans2, ans3, ans))
         else:
