@@ -11,6 +11,7 @@ import subprocess
 from urllib.request import urlopen
 from openai import OpenAI
 import sqlite3
+import re
 import ssl; ssl._create_default_https_context = ssl._create_stdlib_context
 
 SRC_WIDTH = 960
@@ -181,7 +182,6 @@ def to_string(results):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('video')
-    parser.add_argument('output')
     args = parser.parse_args()
 
     if args.video.startswith('http'):
@@ -241,3 +241,60 @@ if __name__ == "__main__":
       store=True
     )
 
+    postprocessed = response.output_text
+
+
+    con = sqlite3.connect("questions.db")
+    cur = con.cursor()
+
+    cur.execute("CREATE TABLE IF NOT EXISTS questions (id INTEGER PRIMARY KEY AUTOINCREMENT,  question UNIQUE, answer_a, answer_b, answer_c, correct_answer, url)")
+
+    re_question = re.compile(r'^Question: (.*)$', re.MULTILINE)
+    re_answerA = re.compile(r'^Answer A: (.*)$', re.MULTILINE)
+    re_answerB = re.compile(r'^Answer B: (.*)$', re.MULTILINE)
+    re_answerC = re.compile(r'^Answer C: (.*)$', re.MULTILINE)
+    re_correct = re.compile(r'^Correct answer: (.)$', re.MULTILINE)
+
+
+    def extract_regex(s, regex):
+        res = regex.search(s)
+        if res is None:
+            return None
+        return res[1]
+
+    for line in postprocessed.split("==="):
+        question = ""
+        ansA, ansB, ansC = "", "", ""
+        correctAns = ""
+
+        question = extract_regex(line, re_question)
+        if question is None:
+            print(f"Error with question extraction of '{line}'")
+            continue
+
+        ansA = extract_regex(line, re_answerA)
+        if ansA is None:
+            print(f"Error with answer A in {line}")
+            continue
+
+        ansB = extract_regex(line, re_answerB)
+        if ansB is None:
+            print(f"Error with answer B in {line}")
+            continue
+
+        ansC = extract_regex(line, re_answerC)
+        if ansC is None:
+            print(f"Error with answer C in {line}")
+            continue
+
+        correctAns = extract_regex(line, re_correct)
+        if correctAns is None:
+            print(f"Error with correct answer of {line}")
+            continue
+
+        cur.execute("""
+            INSERT INTO questions VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (None, question, ansA, ansB, ansC, correctAns, video_url))
+
+    con.commit()
+    con.close()
