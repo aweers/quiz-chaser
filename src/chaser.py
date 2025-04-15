@@ -9,6 +9,8 @@ import argparse
 import glob
 import subprocess
 from urllib.request import urlopen
+from openai import OpenAI
+import sqlite3
 import ssl; ssl._create_default_https_context = ssl._create_stdlib_context
 
 SRC_WIDTH = 960
@@ -151,29 +153,30 @@ def green_answer(image):
     return -1
 
 
-def to_file(results, file_name):
-    correct_answers = ['a', 'b', 'c']
-    with open(file_name, "a") as f:
-        for r in results:
-            f.write("$$$$" + "\n")
+def to_string(results):
+    correct_answers = ['A', 'B', 'C']
+    result = ""
+    for r in results:
+        result += "$$$$" + "\n"
 
-            f.write("Question\n")
-            f.write(r[1] + "\n")
+        result += "Question\n"
+        result += r[1] + "\n"
 
-            f.write("$$$" + "\n")
-            f.write("Answer A\n")
-            f.write(r[2] + "\n")
+        result += "$$$" + "\n"
+        result += "Answer A\n"
+        result += r[2] + "\n"
 
-            f.write("$$$" + "\n")
-            f.write("Answer B\n")
-            f.write(r[3] + "\n")
+        result += "$$$" + "\n"
+        result += "Answer B\n"
+        result += r[3] + "\n"
 
-            f.write("$$$" + "\n")
-            f.write("Answer C\n")
-            f.write(r[4] + "\n")
+        result += "$$$" + "\n"
+        result += "Answer C\n"
+        result += r[4] + "\n"
 
-            f.write("$$$" + "\n")
-            f.write(f"Correct answer: {correct_answers[r[5]]}\n\n")
+        result += "$$$" + "\n"
+        result += f"Correct answer: {correct_answers[r[5]]}\n\n"
+    return result
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -185,15 +188,56 @@ if __name__ == "__main__":
         page = urlopen(args.video)
         html_bytes = page.read()
         html = html_bytes.decode("utf-8")
+        pos = html.index("uploadDate")
+        upload_time = html[pos+21:pos+41]
         pos = html.index('m3u8')
         start_pos = html.rfind("\"", 0, pos)
         video_url = html[start_pos+1:pos+4]
     else:
         video_url = args.video
+        upload_time = ""
 
     streams = probe_stream(video_url)
     high_q_stream = select_stream(streams, 'high')
     SRC_HEIGHT = high_q_stream['height']
     SRC_WIDTH = high_q_stream['width']
     res = process_stream(video_url, high_q_stream['index'])
-    to_file(res, args.output)
+    str_res = to_string(res)
+
+    client = OpenAI()
+
+    response = client.responses.create(
+      model="gpt-4o-mini",
+      input=[
+        {
+          "role": "system",
+          "content": [
+            {
+              "type": "input_text",
+              "text": "The task is to process OCR output from a TV quiz show, correcting errors and removing duplications, and format each question and its answers as specified.\n\n# Steps\n\n1. **Extract Information**: Identify and extract each question and its associated answers from the OCR output.\n2. **Correction**: Correct any small errors in the text, such as typos or formatting issues.\n3. **Deduplication**: Remove any duplicate entries within the extracted questions and answers.\n4. **Classification**: Identify the correct answer for each question if it is not explicitly stated.\n5. **Formatting**: Format the corrected question and answers according to the specified layout.\n\n# Output Format\n\nThe output should be formatted for each question set as follows:\n\n```\nQuestion: [full question text]\nAnswer A: [answer text]\nAnswer B: [answer text]\nAnswer C: [answer text]\nCorrect answer: [Correct Answer Letter]\n===\n```\n\nEach question set should be separated by `===`.\n\n# Examples\n\n**Input:**\n$$$$\nQuestion\nm EEE ——\nWas sind die Teilnehmenden der ZDFneo-Show \"Glow Up\"?\n\n$$$\nAnswer A\nA:CPUs\n\n$$$\nAnswer B\nIUAS\n\n$$$\nAnswer C\nJFOS\n\n$$$\nCorrect answer: B\n\n\n**Output:**\n```\n===\nQuestion: Was sind die Teilnehmenden der ZDFneo-Show \"Glow Up\"?\nAnswer A: CPUs\nAnswer B: IUAs\nAnswer C JFOs\nCorrect answer: B\n```\n\n# Notes\n\n- Ensure that any recognized errors or duplications in the OCR text are corrected before formatting.\n- In cases where the correct answer isn't clearly indicated, use logical inference to determine the correct answer based on context."
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "input_text",
+              "text": str_res
+            }
+          ]
+        }
+      ],
+      text={
+        "format": {
+          "type": "text"
+        }
+      },
+      reasoning={},
+      tools=[],
+      temperature=1,
+      max_output_tokens=2048,
+      top_p=1,
+      store=True
+    )
+
