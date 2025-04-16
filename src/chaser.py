@@ -179,31 +179,7 @@ def to_string(results):
         result += f"Correct answer: {correct_answers[r[5]]}\n\n"
     return result
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument('video')
-    args = parser.parse_args()
-
-    if args.video.startswith('http'):
-        page = urlopen(args.video)
-        html_bytes = page.read()
-        html = html_bytes.decode("utf-8")
-        pos = html.index("uploadDate")
-        upload_time = html[pos+21:pos+41]
-        pos = html.index('m3u8')
-        start_pos = html.rfind("\"", 0, pos)
-        video_url = html[start_pos+1:pos+4]
-    else:
-        video_url = args.video
-        upload_time = ""
-
-    streams = probe_stream(video_url)
-    high_q_stream = select_stream(streams, 'high')
-    SRC_HEIGHT = high_q_stream['height']
-    SRC_WIDTH = high_q_stream['width']
-    res = process_stream(video_url, high_q_stream['index'])
-    str_res = to_string(res)
-
+def postprocess(s):
     client = OpenAI()
 
     response = client.responses.create(
@@ -223,7 +199,7 @@ if __name__ == "__main__":
           "content": [
             {
               "type": "input_text",
-              "text": str_res
+              "text": s
             }
           ]
         }
@@ -241,9 +217,9 @@ if __name__ == "__main__":
       store=True
     )
 
-    postprocessed = response.output_text
+    return response.output_text
 
-
+def save_db(s, video_url):
     con = sqlite3.connect("questions.db")
     cur = con.cursor()
 
@@ -262,7 +238,7 @@ if __name__ == "__main__":
             return None
         return res[1]
 
-    for line in postprocessed.split("==="):
+    for line in s.split("==="):
         question = ""
         ansA, ansB, ansC = "", "", ""
         correctAns = ""
@@ -298,3 +274,72 @@ if __name__ == "__main__":
 
     con.commit()
     con.close()
+
+def process_video(url):
+    global SRC_WIDTH, SRC_HEIGHT
+    streams = probe_stream(url)
+    high_q_stream = select_stream(streams, 'high')
+    SRC_HEIGHT = high_q_stream['height']
+    SRC_WIDTH = high_q_stream['width']
+    res = process_stream(url, high_q_stream['index'])
+    str_res = to_string(res)
+    postprocessed = postprocess(str_res)
+    save_db(postprocessed, url)
+
+def read_html(url):
+    page = urlopen(url)
+    html_bytes = page.read()
+    html = html_bytes.decode("utf-8")
+    return html
+
+def get_video_from_html(url):
+    html = read_html(url)
+    pos = html.index("uploadDate")
+    upload_time = html[pos+21:pos+41] # not used yet
+    pos = html.index('m3u8')
+    start_pos = html.rfind("\"", 0, pos)
+    video_url = html[start_pos+1:pos+4]
+    return video_url
+
+def get_indiv_urls_from_overview(html, needle, prefix):
+    urls = []
+    pos = html.find(needle)
+    while pos > -1:
+        start = html.rfind("\"", 0, pos)
+        end = html.find("\"", pos)
+        pos = html.find(needle, pos + 1)
+        video_url = get_video_from_html(prefix + html[start+1:end])
+        urls.append(video_url)
+    return urls
+
+def in_db(url):
+    con = sqlite3.connect("questions.db")
+    cur = con.cursor()
+
+    cur.execute("SELECT id FROM questions WHERE url=?", (url,))
+    res = cur.fetchone()
+    if res:
+        return True
+    return False
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument('video')
+    args = parser.parse_args()
+
+    if args.video.startswith('http'):
+        video_url = get_video_from_html(args.video)
+        process_video(video_url)
+    elif args.video.endswith('.yaml'):
+        import yaml
+        with open(args.video, 'r') as file:
+            config = yaml.safe_load(file)
+
+        html = read_html(config['url'])
+        urls = get_indiv_urls_from_overview(html, config['searchTerm'], config['prefix'])
+        for url in urls:
+            if not in_db(url):
+                process_video(url)
+    else:
+        process_video(args.video)
+

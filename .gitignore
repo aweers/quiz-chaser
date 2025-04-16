@@ -1,5 +1,7 @@
 env/
-.DS_Store/
+**/.DS_Store
 *.png
 *.jpg
 *.db
+*.txt
+*.yaml
