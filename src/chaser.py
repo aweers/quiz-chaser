@@ -332,7 +332,8 @@ if __name__ == "__main__":
 
     if args.video.startswith('http'):
         video_url = get_video_from_html(args.video)
-        process_video(video_url)
+        if not in_db(video_url):
+            process_video(video_url)
     elif args.video.endswith('.yaml'):
         import yaml
         with open(args.video, 'r') as file:
@@ -344,5 +345,5 @@ if __name__ == "__main__":
             if not in_db(url):
                 process_video(url)
     else:
-        process_video(args.video)
-
+        if not in_db(args.video):
+            process_video(args.video)
