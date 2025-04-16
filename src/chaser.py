@@ -220,11 +220,7 @@ def postprocess(s):
     return response.output_text
 
 def save_db(s, video_url):
-    con = sqlite3.connect("questions.db")
-    cur = con.cursor()
-
-    cur.execute("CREATE TABLE IF NOT EXISTS questions (id INTEGER PRIMARY KEY AUTOINCREMENT,  question UNIQUE, answer_a, answer_b, answer_c, correct_answer, url)")
-
+    con, cur = open_db()
     re_question = re.compile(r'^Question: (.*)$', re.MULTILINE)
     re_answerA = re.compile(r'^Answer A: (.*)$', re.MULTILINE)
     re_answerB = re.compile(r'^Answer B: (.*)$', re.MULTILINE)
@@ -312,12 +308,19 @@ def get_indiv_urls_from_overview(html, needle, prefix):
         urls.append(video_url)
     return urls
 
-def in_db(url):
+def open_db():
     con = sqlite3.connect("questions.db")
     cur = con.cursor()
+    cur.execute("CREATE TABLE IF NOT EXISTS questions (id INTEGER PRIMARY KEY AUTOINCREMENT,  question UNIQUE, answer_a, answer_b, answer_c, correct_answer, url)")
+    con.commit()
+    return con, cur
 
+def in_db(url):
+    con, cur = open_db()
     cur.execute("SELECT id FROM questions WHERE url=?", (url,))
     res = cur.fetchone()
+    con.close()
+
     if res:
         return True
     return False
