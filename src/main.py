@@ -25,7 +25,7 @@ async def cronjob():
 async def lifespan(app: FastAPI):
     scheduler = AsyncIOScheduler()
     trigger = CronTrigger(
-        year="*", month="*", day="*", hour="15", minute="10", second="0", timezone="utc"
+        year="*", month="*", day="*", hour="15", minute="12", second="0"
     )
     scheduler.add_job(func=cronjob, trigger=trigger)
     scheduler.start()
@@ -34,6 +34,15 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+
+@app.get("/count")
+def count():
+    with sqlite3.connect("questions.db") as conn:
+        cur = conn.cursor()
+        cur.execute("select count(1) from questions")
+        rows = cur.fetchone()
+        return rows[0]
+
 
 
 @app.get("/questions")
