@@ -51,7 +51,7 @@ def select_stream(details, quality):
 
 def process_stream(url, stream_index=0):
     proc = (
-        ffmpeg.input(url)[f"0:{stream_index}"]
+        ffmpeg.input(url)[f"{stream_index}"]
         .filter("fps", fps="2")
         .output(
             "pipe:",
